@@ -1,0 +1,53 @@
+﻿<div class="row g-3 mb-4">
+    <div class="col-6">
+        <button class="btn btn-outline-primary w-100 py-4 h-100 rounded-4 shadow-sm border-2 action-btn" @onclick="OnRefresh" disabled="@IsLoading">
+            <div class="fs-1 mb-2">🔄</div>
+            <div class="fw-bold">Refresh Area</div>
+            @if (IsLoading)
+            {
+                <div class="spinner-border spinner-border-sm text-primary mt-2"></div>
+            }
+        </button>
+    </div>
+    <div class="col-6">
+        <button class="btn btn-outline-success w-100 py-4 h-100 rounded-4 shadow-sm border-2 action-btn" @onclick="OnAddDemo">
+            <div class="fs-1 mb-2">➕</div>
+            <div class="fw-bold">Add Spot</div>
+        </button>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm rounded-4 mb-4 hover-card" @onclick="OnShowHistory" style="cursor: pointer; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+    <div class="card-body p-4 d-flex align-items-center">
+        <div class="bg-white rounded-circle p-3 shadow-sm me-3 text-primary">
+            <span class="fs-4">📜</span>
+        </div>
+        <div>
+            <h6 class="fw-bold mb-1">Transactions History</h6>
+            <div class="text-muted small">Check your past bookings and payments</div>
+        </div>
+        <div class="ms-auto text-muted">→</div>
+    </div>
+</div>
+
+<div class="text-center text-muted mt-5">
+    <small>👆 Interact with the map or use buttons above</small>
+</div>
+
+<style>
+    .action-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15) !important;
+    }
+
+    .hover-card:hover {
+        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%) !important;
+    }
+</style>
+
+@code {
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public EventCallback OnAddDemo { get; set; }
+    [Parameter] public EventCallback OnShowHistory { get; set; }
+}

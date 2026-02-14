@@ -1,0 +1,200 @@
+﻿@using System.Timers
+@using BlazorGooglePay
+@using System.Diagnostics
+@using BlazorGooglePay.Extensions
+@using System.Threading.Tasks
+@using Microsoft.AspNetCore.Components
+@using System.Collections.Generic
+@implements IDisposable
+@inject IJSRuntime JS
+@inject Payment.PaymentClient PaymentClient
+
+<h1>Hello, BlazorGooglePay!</h1>
+
+<style>
+    #gpay-container {
+        width: 100%;
+        min-height: 50px;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+    }
+
+        #gpay-container:hover {
+            transform: translateY(-2px);
+        }
+
+    /* Ограничиваем контейнер, чтобы он соответствовал w-100 и rounded-4 */
+    .gpay-button-wrapper {
+        overflow: hidden;
+        border-radius: 1rem; /* rounded-4 */
+    }
+</style>
+
+<script src="googlePay.js"></script>
+<script async src="https://pay.google.com/gp/p/js/pay.js" onload="onGooglePayLoaded()"></script>
+
+<hr />
+
+<div class="text-center py-4">
+    <div class="bg-success-subtle text-success rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 80px; height: 80px;">
+        <span class="fs-1">🅿️</span>
+    </div>
+    <h3 class="fw-bold">Spot Reserved!</h3>
+    <p class="text-muted">
+        Please complete payment in
+        <span class="text-danger fw-bold fs-5">@timeLeft</span>
+    </p>
+</div>
+
+<div class="card border-0 shadow-sm rounded-4 mb-4">
+    <div class="card-header bg-white border-bottom-0 pt-4 pb-0">
+        <h6 class="text-uppercase text-muted small fw-bold">Order Summary</h6>
+    </div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between mb-2">
+            <span>Booking ID</span>
+            <code class="text-primary">@BookingId?.Substring(0, 8)...</code>
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+            <span>Rate</span>
+            <span>$15.00 / hr</span>
+        </div>
+        <hr class="my-3 border-secondary-subtle">
+        <div class="d-flex justify-content-between align-items-center">
+            <span class="fw-bold">Total</span>
+            <span class="fs-4 fw-bold text-dark">$15.00</span>
+        </div>
+    </div>
+</div>
+
+<div id="gpay-container"
+     class="bg-dark rounded-4 d-flex align-items-center justify-content-center shadow-sm"
+     style="height: 55px; width: 100%; overflow: hidden; position: relative; min-height: 55px;">
+
+    @if (isProcessing)
+    {
+        <div class="spinner-border spinner-border-sm text-light" role="status"></div>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(localStatus))
+{
+    <div class="mt-3 small p-2 rounded @(localStatus.Contains("✅") ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")">
+        @localStatus
+    </div>
+}
+<button class="btn btn-outline-danger w-100 rounded-4 py-2 border-0" @onclick="OnCancel" disabled="@isProcessing">
+    Cancel Booking
+</button>
+
+@* 
+<script src="googlePay.js"></script> *@
+@code {
+    [Parameter] public string BookingId { get; set; } = "";
+    [Parameter] public string SpotId { get; set; } = "";
+    [Parameter] public DateTime? ExpiresAt { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private DotNetObjectReference<PaymentPanel>? objRef;
+    private bool isProcessing = false;
+    private string localStatus = "";
+
+    private string timeLeft = "--:--";
+    private Timer? _timer;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                // Give the browser a tiny moment to ensure scripts are parsed
+                await Task.Delay(500);
+                objRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("initGPay", objRef);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"JS Init Error: {ex.Message}");
+                localStatus = "⚠️ Ошибка инициализации платежной системы.";
+            }
+        }
+    }
+    protected override void OnInitialized()
+    {
+        _timer = new Timer(1000);
+        _timer.Elapsed += (sender, e) => UpdateTimer();
+        _timer.Start();
+
+        UpdateTimer();
+    }
+    [JSInvokable]
+    public async Task PayWithGooglePay(string token)
+    {
+        if (isProcessing) return;
+
+        isProcessing = true;
+        localStatus = "⌛ Обработка платежа...";
+        StateHasChanged();
+
+        try
+        {
+            var response = await PaymentClient.ProcessPaymentAsync(new PaymentRequest
+            {
+                BookingId = BookingId,
+                SpotId = SpotId,
+                PaymentToken = token,
+                Amount = 15.00
+            });
+
+            if (response.Success)
+            {
+                localStatus = "✅ Оплачено успешно!";
+            }
+            else
+            {
+                localStatus = $"❌ Ошибка: {response.Message}";
+            }
+        }
+        catch (Exception ex)
+        {
+            localStatus = $"❌ Ошибка связи: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void UpdateTimer()
+    {
+        if (ExpiresAt.HasValue)
+        {
+            var remaining = ExpiresAt.Value - DateTime.UtcNow;
+
+            if (remaining <= TimeSpan.Zero)
+            {
+                timeLeft = "00:00";
+                // Тут можно вызвать EventCallback OnExpired, чтобы закрыть панель
+                _timer?.Stop();
+            }
+            else
+            {
+                // Форматируем время мм:сс
+                timeLeft = remaining.ToString(@"mm\:ss");
+            }
+
+            // Обновляем UI (так как таймер работает в фоновом потоке)
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        objRef?.Dispose();
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+
+}

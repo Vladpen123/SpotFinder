@@ -1,0 +1,2 @@
+obj\Debug\net10.0/Geo.cs \
+obj\Debug\net10.0/GeoGrpc.cs: ../SpotFinder.Shared/Protos/geo.proto

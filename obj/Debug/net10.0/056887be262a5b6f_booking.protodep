@@ -1,0 +1,3 @@
+obj\Debug\net10.0/Booking.cs \
+obj\Debug\net10.0/BookingGrpc.cs: C:/Users/Vlad/.nuget/packages/grpc.tools/2.76.0/build/native/include/google/protobuf/timestamp.proto\
+ ../SpotFinder.Shared/Protos/booking.proto

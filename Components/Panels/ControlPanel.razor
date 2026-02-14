@@ -1,0 +1,85 @@
+﻿@using SpotFinder.Shared
+@using SpotFinder.Shared.Protos
+@using SpotFinder.Web.Components.Panels
+
+<div class="control-panel h-100 d-flex flex-column">
+
+    <!-- Красивый заголовок -->
+    <div class="p-4 bg-white border-bottom sticky-top" style="z-index: 1020;">
+        <h4 class="fw-bold mb-1">Explore</h4>
+        <p class="text-muted mb-0 small">Find best parking spots nearby</p>
+
+        @if (!string.IsNullOrEmpty(StatusMessage))
+        {
+            <div class="alert alert-soft-primary mt-3 mb-0 d-flex align-items-center shadow-sm border-0 rounded-3">
+                <span class="me-2">ℹ️</span> @StatusMessage
+            </div>
+        }
+    </div>
+
+    <!-- Основной контент -->
+    <div class="flex-grow-1 p-4 overflow-auto">
+        <div class="fade-in-up">
+            @if (CurrentBookingId != null)
+            {
+                <PaymentPanel BookingId="@CurrentBookingId" SpotId="@CurrentSpotId" ExpiresAt="@BookingExpiresAt" OnCancel="OnCancelBooking" />
+            }
+            else if (SelectedSpotId != null)
+            {
+                <SpotDetailsPanel SpotId="@SelectedSpotId" OnBook="OnBook" OnClose="OnCloseSelection" />
+            }
+            else if (ShowHistory)
+            {
+                <HistoryPanel Bookings="BookingsHistory" OnClose="OnToggleHistory" />
+            }
+            else
+            {
+                <SearchPanel IsLoading="IsLoading" OnRefresh="OnRefresh" OnAddDemo="OnAddDemo" OnShowHistory="OnToggleHistory" />
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .alert-soft-primary {
+        background-color: #eef2ff;
+        color: #4f46e5;
+    }
+
+    .fade-in-up {
+        animation: fadeInUp 0.4s ease-out;
+    }
+
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string? StatusMessage { get; set; }
+    [Parameter] public string? SelectedSpotId { get; set; }
+    [Parameter] public string? CurrentSpotId { get; set; }
+    [Parameter] public string? CurrentBookingId { get; set; }
+    [Parameter] public DateTime? BookingExpiresAt { get; set; }
+    [Parameter] public bool ShowHistory { get; set; }
+
+    [Parameter] public List<BookingModel>? BookingsHistory { get; set; }
+
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public EventCallback OnAddDemo { get; set; }
+    [Parameter] public EventCallback<string> OnBook { get; set; }
+    [Parameter] public EventCallback OnPay { get; set; }
+    [Parameter] public EventCallback OnCloseSelection { get; set; }
+    [Parameter] public EventCallback OnToggleHistory { get; set; }
+    [Parameter] public EventCallback OnCancelBooking { get; set; }
+
+}

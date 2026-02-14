@@ -1,0 +1,43 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+
+    <!-- ✅ ВАЖНО: Подключаем Bootstrap 5.3.2 через CDN -->
+    <!-- Это нужно для классов bg-success-subtle, rounded-4, shadow-sm -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" xintegrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+
+    <!-- Ваши кастомные стили (если есть) -->
+    <link rel="stylesheet" href="home.css" />
+    <link rel="stylesheet" href="SpotFinder.Web.styles.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <HeadOutlet />
+</head>
+
+<body>
+    <!-- Оборачиваем все приложение в CascadingAuthenticationState для работы Identity -->
+    <CascadingAuthenticationState>
+        <Routes />
+    </CascadingAuthenticationState>
+
+    <script src="_framework/blazor.web.js"></script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Bootstrap JS (нужен для некоторых компонентов, например, модалок или выпадающих списков) -->
+    
+
+    <!-- Наш скрипт карты -->
+    <script src="map.js"></script>
+</body>
+
+</html>

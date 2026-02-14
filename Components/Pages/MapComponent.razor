@@ -1,0 +1,90 @@
+﻿@inject IJSRuntime JS
+@implements IDisposable
+@inject MapStateService MapState
+<div style="position: relative; height: 100%; width: 100%;">
+
+    <div id="map" style="height: 100%; width: 100%;"></div>
+
+    <!-- Кнопка локации -->
+    <button class="btn btn-light shadow-sm"
+            style="position: absolute; bottom: 30px; right: 20px; z-index: 900; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; padding: 0; line-height: 50px;"
+            @onclick="LocateMe"
+            title="Find my location">
+        📍
+    </button>
+</div>
+
+@code {
+    [Parameter] public double CenterLat { get; set; }
+    [Parameter] public double CenterLon { get; set; }
+    [Parameter] public bool AutoLocate { get; set; } = false;
+
+    [Parameter] public EventCallback<string> OnSpotSelected { get; set; }
+    [Parameter] public EventCallback OnSpotDeselected { get; set; }
+    [Parameter] public EventCallback<GeolocationResult> OnLocationFound { get; set; }
+
+
+    [Parameter] public string? ActiveSpotId { get; set; }
+
+    private DotNetObjectReference<MapComponent>? dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+
+        if (firstRender)
+        {
+            dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync(
+                "mapHelper.initMap",
+                "map",
+                MapState.Latitude,
+                MapState.Longitude,
+                MapState.Zoom, 
+                dotNetRef);
+            if (AutoLocate && MapState.Latitude == 50.4501 && MapState.Longitude == 30.5234)
+            {
+                await Task.Delay(500);
+                await LocateMe();
+            }
+        }
+    }
+
+    private async Task LocateMe()
+    {
+        try
+        {
+            var coords = await JS.InvokeAsync<GeolocationResult>("mapHelper.getUserLocation");
+            await JS.InvokeVoidAsync("mapHelper.setView", coords.Lat, coords.Lon);
+            await OnLocationFound.InvokeAsync(coords);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Locate error: {ex.Message}");
+        }
+    }
+ 
+    public async Task AddMarkerAsync(string id, double lat, double lon, decimal price, string? reservedBy, string status)
+    {
+        bool shouldBeOpen = (id == ActiveSpotId);
+        await JS.InvokeVoidAsync("mapHelper.addMarker", id, lat, lon, price, reservedBy, status, shouldBeOpen);
+    }
+    [JSInvokable]
+    public void OnMapMoved(double lat, double lon, int zoom) => MapState.UpdateState(lat, lon, zoom);
+
+    [JSInvokable]
+    public async Task ClearMarkersAsync() => await JS.InvokeVoidAsync("mapHelper.clearMarkers");
+
+    [JSInvokable("OnSpotSelected")]
+    public async Task NotifySpotSelectedFromJs(string spotId) => await OnSpotSelected.InvokeAsync(spotId);
+
+    [JSInvokable("OnSpotDeselected")]
+    public async Task NotifySpotDeselectedFromJs() => await OnSpotDeselected.InvokeAsync();
+
+    public void Dispose() => dotNetRef?.Dispose();
+
+    public class GeolocationResult
+    {
+        public double Lat { get; set; }
+        public double Lon { get; set; }
+    }
+}

@@ -1,0 +1,2 @@
+obj\Debug\net10.0/Payment.cs \
+obj\Debug\net10.0/PaymentGrpc.cs: ../SpotFinder.Shared/Protos/payment.proto

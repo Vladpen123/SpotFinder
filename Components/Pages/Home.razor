@@ -1,0 +1,337 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@inject SpotFinder.Shared.Protos.Payment.PaymentClient PaymentClient
+@inject SpotFinder.Shared.Protos.Booking.BookingClient BookingClient
+@inject SpotFinder.Shared.Protos.Geo.GeoClient GeoClient
+@inject SpotFinder.Web.Services.NotificationService Notifier
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+@implements IDisposable
+@using System.Globalization
+@using System.Text.Json
+@using Grpc.Core
+@using SpotFinder.Shared.Protos
+@using SpotFinder.Web.Components
+@using SpotFinder.Web.Components.Layout
+@using SpotFinder.Shared
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Google
+
+
+<link rel="stylesheet" href="home.css" />
+
+
+<div class="finder-layout">
+
+    <div class="map-area">
+        <MapComponent @ref="mapComponent"
+                      OnSpotSelected="HandleSpotSelected"
+                      OnSpotDeselected="HandleSpotDeselected"
+                      OnLocationFound="HandleLocationFound"
+                      AutoLocate="true"
+                      ActiveSpotId="@(currentBookingId != null ? currentSpotId : selectedSpotId)" />
+    </div>
+
+    <div class="sidebar-area">
+        <ControlPanel IsLoading="isLoading"
+                      StatusMessage="@statusMessage"
+                      SelectedSpotId="@selectedSpotId"
+                      CurrentSpotId="@currentSpotId"
+                      CurrentBookingId="@currentBookingId"
+                      ShowHistory="showHistory"
+                      BookingsHistory="bookingsHistory"
+                      OnRefresh="LoadSpots"
+                      OnAddDemo="AddDemoSpot"
+                      OnBook="BookSpot"
+                      OnCancelBooking="CancelBooking"
+                      BookingExpiresAt="@currentBookingExpiresAt"
+                      OnCloseSelection="HandleSpotDeselected"
+                      OnToggleHistory="ToggleHistory" />
+    </div>
+
+</div>
+@code {
+    private MapComponent? mapComponent;
+    private string statusMessage = "Ready to search.";
+    private bool isLoading = false;
+    private string? selectedSpotId = null;
+    private string? currentBookingId = null;
+    private string? currentSpotId = null;
+    private DateTime? currentBookingExpiresAt = null;
+    private bool showHistory = false;
+    private List<BookingModel>? bookingsHistory;
+
+    double lat = 55.75;
+    double lon = 37.61;
+    private string currentUserId = "anon-guest";
+
+    private readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true
+    };
+    [JSInvokable]
+    public async Task PayWithGooglePay(string gpayToken)
+    {
+        statusMessage = "Processing payment...";
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Теперь мы используем реальный токен от Google
+            var response = await PaymentClient.ProcessPaymentAsync(new PaymentRequest
+            {
+                BookingId = currentBookingId,
+                SpotId = currentSpotId ?? "",
+                PaymentToken = gpayToken,
+                Amount = 15.00
+            });
+
+            statusMessage = response.Success ?
+                "✅ Оплата прошла успешно!" :
+                $"❌ Ошибка оплаты: {response.Message}";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Ошибка gRPC: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        Notifier.PaymentConfirmed += HandlePaymentConfirmed;
+        Notifier.MapStateChanged += HandleMapUpdate;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                            ?? user.Identity.Name
+                            ?? "unknown-user";
+        }
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadSpots();
+        }
+    }
+    private void HandleMapUpdate()
+    {
+        InvokeAsync(async () =>
+        {
+            await LoadSpots();
+            StateHasChanged();
+        });
+    }
+
+
+    private async Task CancelBooking()
+    {
+        if (!string.IsNullOrEmpty(currentBookingId))
+        {
+            isLoading = true;
+            statusMessage = "Cancelling...";
+
+            try
+            {
+                var request = new CancelRequest { BookingId = currentBookingId };
+                var response = await BookingClient.CancelBookingAsync(request);
+
+                if (response.Success)
+                {
+                    statusMessage = "Booking cancelled.";
+                    currentBookingId = null;
+
+                    await LoadSpots();
+                }
+                else
+                {
+                    statusMessage = "Failed to cancel.";
+                }
+            }
+            catch (Exception ex) { statusMessage = $"Error: {ex.Message}"; }
+            finally { isLoading = false; }
+        }
+    }
+
+    private void HandlePaymentConfirmed(string? bookingId)
+    {
+        InvokeAsync(async () =>
+        {
+            //await Task.Delay(1000);
+            if (currentBookingId == bookingId)
+            {
+                currentBookingId = null;
+                statusMessage = "Payment successful!";
+                await LoadSpots();
+                if (showHistory) await LoadMyBookings();
+                StateHasChanged();
+            }
+            else
+            {
+                await LoadSpots();
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void HandleSpotSelected(string spotId)
+    {
+        selectedSpotId = spotId;
+        showHistory = false;
+    }
+
+    private void HandleSpotDeselected()
+    {
+        if (currentBookingId == null)
+        {
+            selectedSpotId = null;
+        }
+    }
+
+    private async Task HandleLocationFound(MapComponent.GeolocationResult coords)
+    {
+        lat = coords.Lat;
+        lon = coords.Lon;
+        await LoadSpots();
+        StateHasChanged();
+    }
+
+    private async Task ToggleHistory()
+    {
+
+
+        showHistory = !showHistory;
+        if (showHistory)
+        {
+            await LoadMyBookings();
+        }
+    }
+
+    private async Task LoadSpots()
+    {
+        isLoading = true;
+        try
+        {
+            var latStr = lat.ToString(CultureInfo.InvariantCulture);
+            var lonStr = lon.ToString(CultureInfo.InvariantCulture);
+
+            var response = await GeoClient.GetNearbyAsync(new NearbyRequest
+            {
+                Latitude = lat,
+                Longitude = lon,
+                RadiusKm = 10
+            });
+
+            var spots = response.Spots;
+
+            if (spots != null && mapComponent != null)
+            {
+                await mapComponent.ClearMarkersAsync();
+                foreach (var spot in spots)
+                {
+                    await mapComponent.AddMarkerAsync(
+                        spot.Id,
+                        spot.Latitude,
+                        spot.Longitude,
+                        15.0m,
+                        spot.ReservedBy,
+                        spot.Status
+                    );
+                }
+            }
+        }
+        catch (Exception ex) { statusMessage = $"Error loading spots: {ex.Message}"; }
+        finally { isLoading = false; }
+    }
+
+    private async Task LoadMyBookings()
+    {
+        isLoading = true;
+        try
+        {
+            var response = await BookingClient.GetMyBookingsAsync(new GetHistoryRequest
+            {
+                UserId = currentUserId
+            });
+            bookingsHistory = response.Bookings.ToList();
+        }
+        catch (Exception) { statusMessage = "Failed to load history."; }
+        finally { isLoading = false; }
+    }
+
+    private async Task AddDemoSpot()
+    {
+        var rnd = new Random();
+        await GeoClient.CreateSpotAsync(new Shared.Protos.CreateSpotRequest
+        {
+            Id = $"{rnd.Next(1000, 9999)}",
+            OwnerId = currentUserId,
+            Latitude = lat + (rnd.NextDouble() - 0.5) * 0.02,
+            Longitude = lon + (rnd.NextDouble() - 0.5) * 0.02,
+            PricePerHour = 15.0
+        });
+
+        await LoadSpots();
+    }
+
+    private bool Authorized()
+    {
+        if (currentUserId == "anon-guest")
+        {
+            statusMessage = "⚠️ Please login to book!";
+            return true;
+        }
+        return false;
+    }
+
+    private async Task BookSpot(string spotId)
+    {
+        isLoading = true;
+        try
+        {
+            var response = await BookingClient.CreateBookingAsync(new CreateBookingRequest
+            {
+                SpotId = spotId,
+                UserId = currentUserId
+            });
+
+            if (response != null)
+            {
+                currentBookingId = response.BookingId;
+                currentSpotId = spotId;
+                selectedSpotId = null;
+                statusMessage = response.Message ?? "Reserved. Please pay.";
+                await LoadSpots();
+            }
+            else
+            {
+                statusMessage = "Spot already booked or error.";
+            }
+        }
+        catch (RpcException ex)
+        {
+            if (ex.StatusCode == StatusCode.AlreadyExists)
+                statusMessage = "❌ Spot is already booked!";
+            else
+                statusMessage = $"❌ Error: {ex.Status.Detail}";
+        }
+        catch (Exception ex) { statusMessage = $"Critical Error: {ex.Message}"; }
+        finally { isLoading = false; }
+    }
+
+
+    public void Dispose()
+    {
+        Notifier.PaymentConfirmed -= HandlePaymentConfirmed;
+        Notifier.MapStateChanged -= HandleMapUpdate;
+    }
+}
